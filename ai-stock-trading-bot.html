@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>AI Stock Trading Bot</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; background: #060a14; font-family: 'Courier New', Courier, monospace; }
+  body { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; padding: 24px 16px; }
+  h1.page-title { color: #38bdf8; font-size: 13px; letter-spacing: 3px; margin-bottom: 16px; }
+  .terminal { background: #0a0e1a; color: #e2e8f0; border-radius: 12px; overflow: hidden; width: 100%; max-width: 980px; border: 1px solid #1e2d4a; }
+  .topbar { background: #0d1220; border-bottom: 1px solid #1e2d4a; padding: 12px 20px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .logo { font-size: 13px; font-weight: 700; color: #38bdf8; letter-spacing: 2px; }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; display: inline-block; margin-right: 6px; animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+  .ticker-bar { background: #060a14; padding: 7px 20px; display: flex; gap: 24px; overflow-x: auto; border-bottom: 1px solid #1e2d4a; scrollbar-width: none; }
+  .ticker-bar::-webkit-scrollbar { display: none; }
+  .ticker-item { font-size: 11px; white-space: nowrap; display: flex; gap: 6px; }
+  .ticker-sym { color: #94a3b8; font-weight: 600; }
+  .ticker-price { color: #f1f5f9; }
+  .up { color: #22c55e; }
+  .down { color: #f43f5e; }
+  .main { display: grid; grid-template-columns: 1fr 280px; }
+  @media(max-width: 680px) { .main { grid-template-columns: 1fr; } .side-panel { border-left: none !important; border-top: 1px solid #1e2d4a; } }
+  .chart-area { padding: 16px; border-right: 1px solid #1e2d4a; display: flex; flex-direction: column; gap: 12px; min-height: 480px; }
+  .chart-header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+  .symbol-select { background: #1e2d4a; border: 1px solid #2d3e5e; color: #f1f5f9; font-size: 12px; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; }
+  .price-display { text-align: right; }
+  .current-price { font-size: 22px; font-weight: 700; color: #f1f5f9; }
+  .price-change { font-size: 11px; }
+  .chart-wrap { position: relative; flex: 1; min-height: 220px; }
+  .signal-bar { background: #0d1220; border: 1px solid #1e2d4a; border-radius: 8px; padding: 10px 14px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .signal-badge { font-size: 11px; font-weight: 700; padding: 4px 12px; border-radius: 4px; letter-spacing: 1px; }
+  .badge-buy  { background: rgba(34,197,94,0.15); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); }
+  .badge-sell { background: rgba(244,63,94,0.15); color: #f43f5e; border: 1px solid rgba(244,63,94,0.3); }
+  .badge-hold { background: rgba(234,179,8,0.15); color: #eab308; border: 1px solid rgba(234,179,8,0.3); }
+  .signal-text { font-size: 12px; color: #94a3b8; flex: 1; min-width: 120px; }
+  .analyze-btn { background: #1e40af; color: #bfdbfe; border: none; font-size: 11px; padding: 7px 16px; border-radius: 6px; cursor: pointer; font-family: inherit; letter-spacing: 1px; transition: background 0.2s; white-space: nowrap; }
+  .analyze-btn:hover { background: #2563eb; }
+  .analyze-btn:disabled { background: #1e2d4a; color: #475569; cursor: not-allowed; }
+  .side-panel { display: flex; flex-direction: column; }
+  .panel-section { border-bottom: 1px solid #1e2d4a; padding: 14px 16px; }
+  .panel-title { font-size: 10px; color: #475569; letter-spacing: 2px; margin-bottom: 10px; }
+  .metric-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .metric-label { font-size: 11px; color: #64748b; }
+  .metric-val { font-size: 11px; color: #cbd5e1; font-weight: 600; }
+  .portfolio-item { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .port-sym { font-size: 12px; color: #38bdf8; }
+  .port-shares { font-size: 11px; color: #64748b; }
+  .port-pnl { font-size: 11px; font-weight: 600; text-align: right; }
+  .ai-output { flex: 1; padding: 14px 16px; overflow-y: auto; max-height: 260px; }
+  .ai-msg { background: #0d1220; border: 1px solid #1e2d4a; border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+  .ai-label { font-size: 10px; color: #38bdf8; letter-spacing: 1px; margin-bottom: 6px; }
+  .ai-text { font-size: 11px; color: #94a3b8; line-height: 1.6; }
+  .loading-dots::after { content: '...'; animation: dots 1.2s infinite; }
+  @keyframes dots { 0%{content:'.'} 33%{content:'..'} 66%{content:'...'} }
+  .trade-btns { display: flex; gap: 6px; padding: 12px 16px; border-top: 1px solid #1e2d4a; }
+  .btn-buy  { flex:1; background: rgba(34,197,94,0.12); color: #22c55e; border: 1px solid rgba(34,197,94,0.3); padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit; letter-spacing: 1px; transition: background 0.2s; }
+  .btn-buy:hover  { background: rgba(34,197,94,0.22); }
+  .btn-sell { flex:1; background: rgba(244,63,94,0.12); color: #f43f5e; border: 1px solid rgba(244,63,94,0.3); padding: 9px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit; letter-spacing: 1px; transition: background 0.2s; }
+  .btn-sell:hover { background: rgba(244,63,94,0.22); }
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: #1e2d4a; color: #f1f5f9; font-size: 12px; padding: 9px 20px; border-radius: 8px; opacity: 0; transition: opacity 0.3s; pointer-events: none; font-family: inherit; border: 1px solid #2d3e5e; z-index: 99; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+  .api-key-bar { background: #0d1220; border-bottom: 1px solid #1e2d4a; padding: 10px 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .api-key-bar label { font-size: 11px; color: #64748b; white-space: nowrap; }
+  .api-key-bar input { flex: 1; min-width: 200px; background: #060a14; border: 1px solid #2d3e5e; color: #f1f5f9; font-size: 11px; padding: 5px 10px; border-radius: 6px; font-family: inherit; outline: none; }
+  .api-key-bar input:focus { border-color: #38bdf8; }
+  .api-key-bar span { font-size: 10px; color: #475569; }
+  footer { margin-top: 16px; font-size: 11px; color: #334155; letter-spacing: 1px; }
+</style>
+</head>
+<body>
+
+<h1 class="page-title">⬡ AI STOCK TRADING BOT</h1>
+
+<div class="terminal">
+  <div class="topbar">
+    <div class="logo"><span class="status-dot"></span>AI STOCK BOT v1.0</div>
+    <div style="font-size:11px;color:#475569;">PAPER TRADING · DEMO ONLY · NOT FINANCIAL ADVICE</div>
+    <div style="font-size:11px;color:#38bdf8;">BALANCE: $<span id="balance">10,000.00</span></div>
+  </div>
+
+  <div class="api-key-bar">
+    <label>ANTHROPIC API KEY</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-ant-... (required for AI analysis)" />
+    <span>Get yours at console.anthropic.com · never stored or sent anywhere except Anthropic</span>
+  </div>
+
+  <div class="ticker-bar" id="tickerBar"></div>
+
+  <div class="main">
+    <div class="chart-area">
+      <div class="chart-header">
+        <select class="symbol-select" id="symbolSelect" onchange="loadSymbol(this.value)">
+          <option value="AAPL">AAPL — Apple Inc.</option>
+          <option value="TSLA">TSLA — Tesla Inc.</option>
+          <option value="NVDA">NVDA — NVIDIA Corp.</option>
+          <option value="MSFT">MSFT — Microsoft</option>
+          <option value="AMZN">AMZN — Amazon</option>
+          <option value="META">META — Meta Platforms</option>
+          <option value="GOOGL">GOOGL — Alphabet</option>
+          <option value="BTC">BTC — Bitcoin</option>
+        </select>
+        <div class="price-display">
+          <div class="current-price" id="currentPrice">$0.00</div>
+          <div class="price-change" id="priceChange"></div>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="priceChart" role="img" aria-label="30-day simulated price chart"></canvas>
+      </div>
+      <div class="signal-bar">
+        <span class="signal-badge badge-hold" id="signalBadge">HOLD</span>
+        <span class="signal-text" id="signalText">Select a stock and run AI analysis</span>
+        <button class="analyze-btn" id="analyzeBtn" onclick="runAnalysis()">▶ ANALYZE</button>
+      </div>
+    </div>
+
+    <div class="side-panel">
+      <div class="panel-section">
+        <div class="panel-title">TECHNICALS</div>
+        <div class="metric-row"><span class="metric-label">RSI (14)</span><span class="metric-val" id="rsiVal">—</span></div>
+        <div class="metric-row"><span class="metric-label">MACD</span><span class="metric-val" id="macdVal">—</span></div>
+        <div class="metric-row"><span class="metric-label">MA (20)</span><span class="metric-val" id="ma20Val">—</span></div>
+        <div class="metric-row"><span class="metric-label">Volatility</span><span class="metric-val" id="volVal">—</span></div>
+        <div class="metric-row"><span class="metric-label">Volume</span><span class="metric-val" id="volumeVal">—</span></div>
+      </div>
+      <div class="panel-section">
+        <div class="panel-title">PORTFOLIO</div>
+        <div id="portfolioList"><div style="font-size:11px;color:#475569;">No positions yet</div></div>
+      </div>
+      <div class="ai-output" id="aiOutput">
+        <div class="ai-msg">
+          <div class="ai-label">AI ANALYST</div>
+          <div class="ai-text">Enter your Anthropic API key above, select a stock, then click ANALYZE for AI-powered trading insights and a BUY/SELL/HOLD recommendation.</div>
+        </div>
+      </div>
+      <div class="trade-btns">
+        <button class="btn-buy" onclick="executeTrade('BUY')">▲ BUY 1</button>
+        <button class="btn-sell" onclick="executeTrade('SELL')">▼ SELL 1</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<footer>PAPER TRADING ONLY · SIMULATED PRICES · NOT REAL FINANCIAL ADVICE</footer>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+const stocks = {
+  AAPL: { base: 189,   name: 'Apple Inc.',       sector: 'Technology' },
+  TSLA: { base: 248,   name: 'Tesla Inc.',        sector: 'EVs/Energy' },
+  NVDA: { base: 875,   name: 'NVIDIA Corp.',      sector: 'Semiconductors' },
+  MSFT: { base: 415,   name: 'Microsoft',         sector: 'Technology' },
+  AMZN: { base: 182,   name: 'Amazon',            sector: 'E-Commerce/Cloud' },
+  META: { base: 502,   name: 'Meta Platforms',    sector: 'Social Media' },
+  GOOGL:{ base: 165,   name: 'Alphabet',          sector: 'Search/Cloud' },
+  BTC:  { base: 67400, name: 'Bitcoin',           sector: 'Crypto' }
+};
+
+let portfolio = {};
+let balance = 10000;
+let currentSym = 'AAPL';
+let currentPrice = 0;
+let chartInstance = null;
+let priceData = [];
+let analyzing = false;
+
+function seededRand(seed) {
+  let s = seed;
+  return () => { s = (s * 9301 + 49297) % 233280; return s / 233280; };
+}
+
+function genPrices(sym, days = 30) {
+  const base = stocks[sym].base;
+  const seed = sym.charCodeAt(0) * 137 + sym.charCodeAt(sym.length - 1) * 31 + (Date.now() % 10000);
+  const rand = seededRand(seed);
+  const prices = [base];
+  for (let i = 1; i < days; i++) {
+    const pct = (rand() - 0.48) * 0.035;
+    prices.push(+(prices[i - 1] * (1 + pct)).toFixed(2));
+  }
+  return prices;
+}
+
+function calcRSI(prices, period = 14) {
+  if (prices.length < period + 1) return 50;
+  let gains = 0, losses = 0;
+  for (let i = prices.length - period; i < prices.length; i++) {
+    const diff = prices[i] - prices[i - 1];
+    if (diff > 0) gains += diff; else losses -= diff;
+  }
+  if (losses === 0) return 100;
+  return +(100 - 100 / (1 + gains / losses)).toFixed(1);
+}
+
+function calcMA(prices, period = 20) {
+  const slice = prices.slice(-period);
+  return +(slice.reduce((a, b) => a + b, 0) / slice.length).toFixed(2);
+}
+
+function calcVolatility(prices) {
+  const returns = prices.slice(-20).map((p, i, arr) => i === 0 ? 0 : (p - arr[i - 1]) / arr[i - 1]);
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / returns.length;
+  return (Math.sqrt(variance) * 100).toFixed(2);
+}
+
+function formatPrice(p) {
+  return p >= 1000
+    ? p.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    : p.toFixed(2);
+}
+
+function loadSymbol(sym) {
+  currentSym = sym;
+  priceData = genPrices(sym);
+  currentPrice = priceData[priceData.length - 1];
+  const prev = priceData[priceData.length - 2];
+  const chg = currentPrice - prev;
+  const pct = ((chg / prev) * 100).toFixed(2);
+  const isUp = chg >= 0;
+
+  document.getElementById('currentPrice').textContent = '$' + formatPrice(currentPrice);
+  document.getElementById('priceChange').innerHTML =
+    `<span class="${isUp ? 'up' : 'down'}">${isUp ? '+' : ''}${chg.toFixed(2)} (${isUp ? '+' : ''}${pct}%)</span>`;
+
+  const rsi  = calcRSI(priceData);
+  const ma20 = calcMA(priceData);
+  const vol  = calcVolatility(priceData);
+  const rand = seededRand(sym.charCodeAt(0) + 99);
+  const macd = ((rand() - 0.48) * 4).toFixed(2);
+  const volume = Math.floor(rand() * 50 + 15) + 'M';
+
+  const rsiEl = document.getElementById('rsiVal');
+  rsiEl.textContent = rsi;
+  rsiEl.style.color = rsi > 70 ? '#f43f5e' : rsi < 30 ? '#22c55e' : '#cbd5e1';
+
+  const macdEl = document.getElementById('macdVal');
+  macdEl.textContent = (macd > 0 ? '+' : '') + macd;
+  macdEl.style.color = macd > 0 ? '#22c55e' : '#f43f5e';
+
+  const ma20El = document.getElementById('ma20Val');
+  ma20El.textContent = '$' + formatPrice(ma20);
+  ma20El.style.color = currentPrice > ma20 ? '#22c55e' : '#f43f5e';
+
+  document.getElementById('volVal').textContent = vol + '%';
+  document.getElementById('volumeVal').textContent = volume;
+
+  drawChart(sym, priceData, ma20);
+  updateSignal(rsi, macd, currentPrice, ma20, 'Click ANALYZE for AI recommendation');
+}
+
+function drawChart(sym, prices, ma20) {
+  const labels = prices.map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (prices.length - 1 - i));
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  });
+  const isUp = prices[prices.length - 1] >= prices[0];
+
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(document.getElementById('priceChart'), {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: sym,
+          data: prices,
+          borderColor: isUp ? '#22c55e' : '#f43f5e',
+          borderWidth: 1.5,
+          pointRadius: 0,
+          fill: true,
+          backgroundColor: isUp ? 'rgba(34,197,94,0.06)' : 'rgba(244,63,94,0.06)',
+          tension: 0.3
+        },
+        {
+          label: 'MA20',
+          data: prices.map(() => ma20),
+          borderColor: '#38bdf8',
+          borderWidth: 1,
+          borderDash: [4, 4],
+          pointRadius: 0,
+          fill: false
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          ticks: { color: '#475569', font: { size: 10 }, maxTicksLimit: 6, autoSkip: true },
+          grid: { color: '#1e2d4a' }
+        },
+        y: {
+          ticks: { color: '#475569', font: { size: 10 }, callback: v => '$' + formatPrice(v) },
+          grid: { color: '#1e2d4a' }
+        }
+      }
+    }
+  });
+}
+
+function updateSignal(rsi, macd, price, ma20, text) {
+  const badge = document.getElementById('signalBadge');
+  document.getElementById('signalText').textContent = text;
+  if (rsi < 40 && price < ma20) {
+    badge.textContent = 'BUY';  badge.className = 'signal-badge badge-buy';
+  } else if (rsi > 65 && price > ma20) {
+    badge.textContent = 'SELL'; badge.className = 'signal-badge badge-sell';
+  } else {
+    badge.textContent = 'HOLD'; badge.className = 'signal-badge badge-hold';
+  }
+}
+
+async function runAnalysis() {
+  if (analyzing) return;
+  const apiKey = document.getElementById('apiKeyInput').value.trim();
+  if (!apiKey) { showToast('Enter your Anthropic API key first'); return; }
+
+  analyzing = true;
+  const btn = document.getElementById('analyzeBtn');
+  btn.disabled = true; btn.textContent = '● ANALYZING';
+
+  const aiOut = document.getElementById('aiOutput');
+  aiOut.innerHTML = `<div class="ai-msg"><div class="ai-label">AI ANALYST</div><div class="ai-text loading-dots">Analyzing ${currentSym}</div></div>`;
+
+  const rsi  = document.getElementById('rsiVal').textContent;
+  const macd = document.getElementById('macdVal').textContent;
+  const ma20 = document.getElementById('ma20Val').textContent;
+  const vol  = document.getElementById('volVal').textContent;
+  const chg  = document.getElementById('priceChange').textContent;
+  const hasPosition = portfolio[currentSym]
+    ? `Current position: ${portfolio[currentSym].shares} shares avg $${formatPrice(portfolio[currentSym].avgPrice)}.`
+    : 'No current position.';
+
+  const prompt = `You are a stock trading analyst. Analyze ${currentSym} (${stocks[currentSym].name}, ${stocks[currentSym].sector} sector).
+
+Current data:
+- Price: $${formatPrice(currentPrice)} (${chg})
+- RSI(14): ${rsi}
+- MACD: ${macd}
+- 20-day MA: ${ma20}
+- Volatility: ${vol}
+- ${hasPosition}
+
+Give a concise trading analysis in 3 short paragraphs:
+1. Technical outlook (RSI, MACD, moving average signals)
+2. Risk assessment and key factors to watch
+3. Clear recommendation: BUY, SELL, or HOLD with brief reasoning
+
+Keep it sharp, specific, and under 150 words total. Use trading terminology.`;
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{ role: 'user', content: prompt }]
+      })
+    });
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error.message);
+
+    const text = data.content?.map(b => b.text || '').join('\n') || 'Analysis unavailable.';
+    const paras = text.trim().split('\n').filter(p => p.trim());
+    const labels = ['TECHNICALS', 'RISK', 'VERDICT'];
+    aiOut.innerHTML = paras.map((p, i) =>
+      `<div class="ai-msg"><div class="ai-label">${labels[i] || 'NOTE'}</div><div class="ai-text">${p.replace(/\*\*/g, '')}</div></div>`
+    ).join('');
+
+    const lower = text.toLowerCase();
+    const isBuy  = lower.includes('buy')  && !lower.includes('not buy');
+    const isSell = lower.includes('sell') && !lower.includes('not sell');
+    updateSignal(
+      parseFloat(rsi),
+      parseFloat(macd),
+      currentPrice,
+      parseFloat(ma20.replace(/[$,]/g, '')),
+      isBuy ? 'AI recommends accumulating' : isSell ? 'AI recommends exiting' : 'AI recommends waiting'
+    );
+  } catch (e) {
+    aiOut.innerHTML = `<div class="ai-msg"><div class="ai-label">ERROR</div><div class="ai-text">${e.message || 'Analysis failed. Check your API key and try again.'}</div></div>`;
+  }
+
+  btn.disabled = false; btn.textContent = '▶ ANALYZE';
+  analyzing = false;
+}
+
+function executeTrade(action) {
+  if (action === 'BUY') {
+    if (balance < currentPrice) { showToast('Insufficient balance'); return; }
+    balance -= currentPrice;
+    if (!portfolio[currentSym]) portfolio[currentSym] = { shares: 0, avgPrice: 0 };
+    const pos = portfolio[currentSym];
+    pos.avgPrice = (pos.avgPrice * pos.shares + currentPrice) / (pos.shares + 1);
+    pos.shares++;
+  } else {
+    if (!portfolio[currentSym] || portfolio[currentSym].shares === 0) { showToast('No position to sell'); return; }
+    balance += currentPrice;
+    portfolio[currentSym].shares--;
+    if (portfolio[currentSym].shares === 0) delete portfolio[currentSym];
+  }
+  document.getElementById('balance').textContent =
+    balance.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  updatePortfolio();
+  showToast(action === 'BUY'
+    ? `Bought 1 ${currentSym} @ $${formatPrice(currentPrice)}`
+    : `Sold 1 ${currentSym} @ $${formatPrice(currentPrice)}`);
+}
+
+function updatePortfolio() {
+  const list = document.getElementById('portfolioList');
+  const keys = Object.keys(portfolio);
+  if (!keys.length) { list.innerHTML = '<div style="font-size:11px;color:#475569;">No positions yet</div>'; return; }
+  list.innerHTML = keys.map(sym => {
+    const pos = portfolio[sym];
+    const livePrice = priceData.length && sym === currentSym ? currentPrice : pos.avgPrice * (0.97 + Math.random() * 0.06);
+    const pnl = (livePrice - pos.avgPrice) * pos.shares;
+    const pnlPct = ((pnl / (pos.avgPrice * pos.shares)) * 100).toFixed(1);
+    return `<div class="portfolio-item">
+      <div><span class="port-sym">${sym}</span><br><span class="port-shares">${pos.shares} @ $${formatPrice(pos.avgPrice)}</span></div>
+      <span class="port-pnl ${pnl >= 0 ? 'up' : 'down'}">${pnl >= 0 ? '+' : ''}$${Math.abs(pnl).toFixed(2)}<br>${pnl >= 0 ? '+' : ''}${pnlPct}%</span>
+    </div>`;
+  }).join('');
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+function buildTicker() {
+  const bar = document.getElementById('tickerBar');
+  bar.innerHTML = Object.entries(stocks).map(([sym, s]) => {
+    const rand = seededRand(sym.charCodeAt(0) + 7);
+    const chg = ((rand() - 0.48) * 3).toFixed(2);
+    return `<div class="ticker-item">
+      <span class="ticker-sym">${sym}</span>
+      <span class="ticker-price">$${formatPrice(s.base)}</span>
+      <span class="${chg >= 0 ? 'up' : 'down'}">${chg >= 0 ? '+' : ''}${chg}%</span>
+    </div>`;
+  }).join('');
+}
+
+buildTicker();
+loadSymbol('AAPL');
+
+setInterval(() => {
+  if (Math.random() > 0.7) {
+    const drift = (Math.random() - 0.495) * 0.002;
+    currentPrice = +(currentPrice * (1 + drift)).toFixed(2);
+    priceData.push(currentPrice);
+    priceData.shift();
+    document.getElementById('currentPrice').textContent = '$' + formatPrice(currentPrice);
+    if (chartInstance) {
+      chartInstance.data.datasets[0].data = [...priceData];
+      chartInstance.update('none');
+    }
+  }
+}, 2000);
+</script>
+</body>
+</html>
